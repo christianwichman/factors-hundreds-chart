@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Factors & Multiples – Hundreds Chart</title>
+<style>
+  :root{
+    --ok:#2e7d32;    /* green */
+    --no:#c62828;    /* red */
+    --multi:#fbc02d; /* yellow */
+    --grid:#e0e0e0;
+    --cell:#ffffff;
+    --text:#1a1a1a;
+    --focus:#2962ff;
+  }
+  html,body{margin:0;padding:0;background:#fafafa;color:var(--text);font:16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";}
+  .wrap{max-width:980px;margin:auto;padding:24px;}
+  h1{font-size:1.4rem;margin:0 0 8px;}
+  .sub{margin:0 0 16px;color:#555;}
+  .controls{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin:8px 0 16px;padding:12px;background:#fff;border:1px solid #ddd;border-radius:10px;}
+  .field{display:flex;flex-direction:column;gap:6px}
+  label{font-weight:600}
+  input[type="number"]{width:150px;padding:10px;border-radius:8px;border:1px solid #bbb;font-size:1rem}
+  input[type="number"]:focus{outline:2px solid var(--focus);border-color:var(--focus)}
+  .btn{padding:10px 14px;border-radius:8px;border:1px solid #aaa;background:#fff;cursor:pointer;font-weight:600}
+  .btn[disabled]{opacity:.5;cursor:not-allowed}
+  .btn.primary{background:#111;color:#fff;border-color:#111}
+  .legend{display:flex;gap:16px;align-items:center;font-size:.95rem;margin:4px 0 0}
+  .badge{display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid #888;margin-right:6px;vertical-align:-2px}
+  .b-ok{background:var(--ok)}
+  .b-no{background:var(--no)}
+  .b-multi{background:var(--multi)}
+  .grid{user-select:none;display:grid;grid-template-columns:repeat(10, minmax(46px,1fr));gap:6px;margin-top:18px}
+  .cell{
+    background:var(--cell);
+    border:1px solid var(--grid);
+    border-radius:10px;
+    padding:10px 0;
+    text-align:center;
+    font-weight:700;
+    font-variant-numeric:tabular-nums;
+    transition:transform .06s ease, background .12s ease, box-shadow .12s ease;
+    outline:none;
+  }
+  .cell:hover{transform:translateY(-1px)}
+  .cell:focus{box-shadow:0 0 0 3px rgba(41,98,255,.35)}
+  .cell.factor-yes{background:var(--ok);color:#fff;border-color:transparent}
+  .cell.factor-no{background:var(--no);color:#fff;border-color:transparent}
+  /* Multiples layer wins visually */
+  .cell.multiple{background:var(--multi)!important;color:#111!important}
+  .footer{margin-top:18px;color:#666;font-size:.9rem}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Factors & Multiples – Hundreds Chart</h1>
+    <p class="sub">Type a whole number (1–100), then click any square: it turns <strong>green</strong> if it’s a factor, <strong>red</strong> if not. Use <strong>Multiples</strong> to show all multiples in <strong>yellow</strong>.</p>
+
+    <div class="controls" role="group" aria-label="Controls">
+      <div class="field">
+        <label for="target">Number (1–100)</label>
+        <input id="target" type="number" inputmode="numeric" min="1" max="100" step="1" placeholder="e.g., 36" aria-describedby="helper" />
+        <div id="helper" class="legend">
+          <span><span class="badge b-ok"></span>factor</span>
+          <span><span class="badge b-no"></span>not a factor</span>
+          <span><span class="badge b-multi"></span>multiple</span>
+        </div>
+      </div>
+
+      <button id="multiplesBtn" class="btn" disabled aria-disabled="true">Show Multiples</button>
+      <button id="resetBtn" class="btn">Reset</button>
+      <button id="checkAllBtn" class="btn primary" disabled aria-disabled="true" title="Quick-check all cells as factors/not">Check All Factors</button>
+    </div>
+
+    <div id="status" aria-live="polite" class="sr-only"></div>
+
+    <div id="grid" class="grid" role="grid" aria-label="Hundreds chart 1 to 100"></div>
+
+    <p class="footer">Tip: Press <kbd>Tab</kbd> to move, <kbd>Enter</kbd>/<kbd>Space</kbd> to check a cell. “Show Multiples” overlays yellow; “Reset” clears everything.</p>
+  </div>
+
+<script>
+(function(){
+  const grid = document.getElementById('grid');
+  const input = document.getElementById('target');
+  const multiplesBtn = document.getElementById('multiplesBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const checkAllBtn = document.getElementById('checkAllBtn');
+  const status = document.getElementById('status');
+
+  // Build 1..100 grid
+  const cells = [];
+  for(let n=1;n<=100;n++){
+    const btn = document.createElement('button');
+    btn.className = 'cell';
+    btn.type = 'button';
+    btn.setAttribute('role','gridcell');
+    btn.setAttribute('aria-label', `Number ${n}`);
+    btn.textContent = n;
+    btn.dataset.n = n.toString();
+    btn.addEventListener('click', ()=> evaluateCell(btn));
+    btn.addEventListener('keydown', (e)=>{
+      if(e.key==='Enter' || e.key===' '){
+        e.preventDefault();
+        evaluateCell(btn);
+      }
+    });
+    grid.appendChild(btn);
+    cells.push(btn);
+  }
+
+  // Utilities
+  const parseTarget = () => {
+    const v = input.value.trim();
+    if(!/^\d+$/.test(v)) return null;
+    const num = Number(v);
+    if(num < 1 || num > 100) return null;
+    return num;
+  };
+
+  const enableActionButtons = (enabled) => {
+    [multiplesBtn, checkAllBtn].forEach(b=>{
+      b.disabled = !enabled;
+      b.setAttribute('aria-disabled', String(!enabled));
+    });
+  };
+
+  const clearFactorClasses = (el) => {
+    el.classList.remove('factor-yes','factor-no');
+  };
+
+  const clearMultiples = () => {
+    cells.forEach(c => c.classList.remove('multiple'));
+  };
+
+  const clearAll = () => {
+    cells.forEach(c => c.classList.remove('factor-yes','factor-no','multiple'));
+    status.textContent = 'Grid reset.';
+  };
+
+  const evaluateCell = (cell) => {
+    const t = parseTarget();
+    if(t === null){
+      input.focus();
+      input.setSelectionRange(0, input.value.length);
+      status.textContent = 'Enter a whole number between 1 and 100 first.';
+      // brief visual cue
+      input.animate([{transform:'translateX(0)'},{transform:'translateX(-3px)'},{transform:'translateX(3px)'},{transform:'translateX(0)'}], {duration:140,iterations:1});
+      return;
+    }
+    const n = Number(cell.dataset.n);
+    clearFactorClasses(cell);
+    if(t % n === 0){
+      cell.classList.add('factor-yes');
+      status.textContent = `${n} is a factor of ${t}.`;
+    } else {
+      cell.classList.add('factor-no');
+      status.textContent = `${n} is NOT a factor of ${t}.`;
+    }
+  };
+
+  // Events
+  input.addEventListener('input', ()=>{
+    const valid = parseTarget() !== null;
+    enableActionButtons(valid);
+    // Clear multiples overlay when number changes (to avoid stale highlights)
+    if(valid) clearMultiples();
+  });
+
+  multiplesBtn.addEventListener('click', ()=>{
+    const t = parseTarget();
+    if(t === null) return;
+    clearMultiples();
+    for(let k=1;k*t<=100;k++){
+      const m = k*t;
+      const cell = cells[m-1];
+      cell.classList.add('multiple');
+    }
+    status.textContent = `Multiples of ${t} highlighted in yellow.`;
+  });
+
+  resetBtn.addEventListener('click', clearAll);
+
+  checkAllBtn.addEventListener('click', ()=>{
+    const t = parseTarget();
+    if(t === null) return;
+    cells.forEach(cell=>{
+      clearFactorClasses(cell);
+      const n = Number(cell.dataset.n);
+      if(t % n === 0) cell.classList.add('factor-yes'); else cell.classList.add('factor-no');
+    });
+    status.textContent = `Checked all cells against ${t}. Green = factor, red = not a factor.`;
+  });
+
+  // Initial state
+  enableActionButtons(false);
+})();
+</script>
+</body>
+</html>
